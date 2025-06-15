@@ -1,4 +1,5 @@
 import { PostRecord } from '../types';
+import { RedditAuth } from './reddit-auth';
 
 export function markdownToText(md: string): string {
   let text = md;
@@ -44,14 +45,29 @@ export async function fetchTopComments(
   maxComments: number = 5,
   commentLimit: number = 10
 ): Promise<string[]> {
-  // Use Netlify function for production, direct Reddit API path for development
-  const isProduction = import.meta.env.PROD;
-  const url = isProduction 
-    ? `/.netlify/functions/reddit-comments?subreddit=${subreddit}&postId=${postId}&sort=top&limit=${commentLimit}`
-    : `/api/reddit/r/${subreddit}/comments/${postId}.json?sort=top&limit=${commentLimit}`;
+  const redditAuth = RedditAuth.getInstance();
+  const accessToken = await redditAuth.getValidAccessToken();
   
   try {
-    const response = await fetch(url);
+    let response;
+    
+    if (accessToken) {
+      // Use authenticated Reddit API
+      const url = `https://oauth.reddit.com/r/${subreddit}/comments/${postId}?sort=top&limit=${commentLimit}`;
+      response = await fetch(url, {
+        headers: {
+          'Authorization': `Bearer ${accessToken}`,
+          'User-Agent': 'RedditTLDR/1.0 (by /u/RedditTLDR)',
+        },
+      });
+    } else {
+      // Fallback to Netlify function for unauthenticated requests
+      const isProduction = import.meta.env.PROD;
+      const url = isProduction 
+        ? `/.netlify/functions/reddit-comments?subreddit=${subreddit}&postId=${postId}&sort=top&limit=${commentLimit}`
+        : `/api/reddit/r/${subreddit}/comments/${postId}.json?sort=top&limit=${commentLimit}`;
+      response = await fetch(url);
+    }
     
     if (!response.ok) {
       console.error('Failed to fetch comments:', response.status, response.statusText);
@@ -95,14 +111,29 @@ export async function fetchTopComments(
 }
 
 export async function searchReddit(query: string, limit: number = 25): Promise<PostRecord[]> {
-  // Use Netlify function for production, direct Reddit API path for development
-  const isProduction = import.meta.env.PROD;
-  const url = isProduction 
-    ? `/.netlify/functions/reddit-search?q=${encodeURIComponent(query)}&limit=${limit}`
-    : `/api/reddit/search.json?q=${encodeURIComponent(query)}&limit=${limit}`;
+  const redditAuth = RedditAuth.getInstance();
+  const accessToken = await redditAuth.getValidAccessToken();
   
   try {
-    const response = await fetch(url);
+    let response;
+    
+    if (accessToken) {
+      // Use authenticated Reddit API
+      const url = `https://oauth.reddit.com/search?q=${encodeURIComponent(query)}&limit=${limit}&sort=relevance&t=all`;
+      response = await fetch(url, {
+        headers: {
+          'Authorization': `Bearer ${accessToken}`,
+          'User-Agent': 'RedditTLDR/1.0 (by /u/RedditTLDR)',
+        },
+      });
+    } else {
+      // Fallback to Netlify function for unauthenticated requests
+      const isProduction = import.meta.env.PROD;
+      const url = isProduction 
+        ? `/.netlify/functions/reddit-search?q=${encodeURIComponent(query)}&limit=${limit}`
+        : `/api/reddit/search.json?q=${encodeURIComponent(query)}&limit=${limit}`;
+      response = await fetch(url);
+    }
     
     if (!response.ok) {
       const errorText = await response.text();
@@ -142,7 +173,7 @@ export async function searchReddit(query: string, limit: number = 25): Promise<P
         
         // Fetch comments for this post with configurable limit
         // Reduce comment fetching in production to avoid rate limits
-        const commentLimit = isProduction ? Math.min(limit, 10) : Math.min(limit, 20);
+        const commentLimit = accessToken ? Math.min(limit, 20) : Math.min(limit, 10);
         const comments = await fetchTopComments(subreddit, postId, 3, commentLimit);
         
         records.push({

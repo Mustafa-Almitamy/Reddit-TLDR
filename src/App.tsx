@@ -6,11 +6,17 @@ import StackedResults from './components/StackedResults';
 import Summary from './components/Summary';
 import Footer from './components/Footer';
 import DarkModeToggle from './components/DarkModeToggle';
+import RedditAuthButton from './components/RedditAuthButton';
+import AuthCallback from './components/AuthCallback';
 import { searchReddit } from './utils/reddit';
 import { analyzeSentiment, aggregateResults } from './utils/gemini';
-import { AnalysisResult, AggregatedResult, SentimentCounts } from './types';
+import { AnalysisResult, AggregatedResult, SentimentCounts, RedditAuthState } from './types';
+import { RedditAuth } from './utils/reddit-auth';
 
 function App() {
+  // Check if this is the auth callback route
+  const isAuthCallback = window.location.pathname === '/auth/callback';
+  
   const [isDark, setIsDark] = useState(() => {
     if (typeof window !== 'undefined') {
       return localStorage.getItem('darkMode') === 'true' || 
@@ -34,6 +40,13 @@ function App() {
   const [dataRetrievalTime, setDataRetrievalTime] = useState(0);
   const [llmProcessingTime, setLlmProcessingTime] = useState(0);
   const [keyword, setKeyword] = useState('');
+  const [redditAuthState, setRedditAuthState] = useState<RedditAuthState>({
+    isAuthenticated: false,
+    accessToken: null,
+    refreshToken: null,
+    expiresAt: null,
+    username: null
+  });
 
   useEffect(() => {
     if (isDark) {
@@ -44,9 +57,33 @@ function App() {
     localStorage.setItem('darkMode', isDark.toString());
   }, [isDark]);
 
+  useEffect(() => {
+    // Initialize Reddit auth state
+    const redditAuth = RedditAuth.getInstance();
+    setRedditAuthState(redditAuth.getAuthState());
+  }, []);
+
   const toggleDarkMode = () => {
     setIsDark(!isDark);
   };
+
+  const handleAuthStateChange = (newAuthState: RedditAuthState) => {
+    setRedditAuthState(newAuthState);
+  };
+
+  const handleAuthComplete = (success: boolean) => {
+    if (success) {
+      const redditAuth = RedditAuth.getInstance();
+      setRedditAuthState(redditAuth.getAuthState());
+    }
+    // Redirect back to main app
+    window.location.href = '/';
+  };
+
+  // Show auth callback component if on callback route
+  if (isAuthCallback) {
+    return <AuthCallback onAuthComplete={handleAuthComplete} />;
+  }
 
   const handleSearch = async (query: string, apiKey: string, postLimit: number, maxRetries: number, selectedModel: string) => {
     setIsAnalyzing(true);
@@ -148,6 +185,23 @@ function App() {
     <div className="min-h-screen bg-gradient-to-br from-orange-50 via-amber-50 to-yellow-50 dark:from-gray-900 dark:via-gray-800 dark:to-gray-900 transition-colors duration-300">
       <DarkModeToggle isDark={isDark} onToggle={toggleDarkMode} />
       <Header />
+      
+      {/* Reddit Auth Section */}
+      <div className="container mx-auto max-w-6xl px-6 -mt-2 mb-4">
+        <div className="flex justify-center">
+          <RedditAuthButton 
+            authState={redditAuthState} 
+            onAuthStateChange={handleAuthStateChange} 
+          />
+        </div>
+        {redditAuthState.isAuthenticated && (
+          <div className="text-center mt-2">
+            <p className="text-sm text-green-600 dark:text-green-400">
+              ✓ Higher rate limits enabled with Reddit authentication
+            </p>
+          </div>
+        )}
+      </div>
       
       <div className="container mx-auto max-w-6xl pb-12">
         <SearchForm onSearch={handleSearch} isAnalyzing={isAnalyzing} />

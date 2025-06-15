@@ -30,3 +30,19 @@ export interface SentimentCounts {
   mixed: number;
   neutral: number;
 }
+
+export interface RedditAuthState {
+  isAuthenticated: boolean;
+  accessToken: string | null;
+  refreshToken: string | null;
+  expiresAt: number | null;
+  username: string | null;
+}
+
+export interface RedditTokenResponse {
+  access_token: string;
+  token_type: string;
+  expires_in: number;
+  scope: string;
+  refresh_token?: string;
+}
